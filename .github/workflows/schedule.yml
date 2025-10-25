@@ -1,8 +1,7 @@
 name: Fisch Season Notifier
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"  # Mỗi 15 phút
+
   workflow_dispatch:
 
 jobs:
