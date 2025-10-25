@@ -1,27 +1,24 @@
-name: Fisch Season Notifier
-
+name: Fisch Notifier
 on:
-
-
-  workflow_dispatch:
-
+  schedule:
+    - cron: '*/15 * * * *'    # Chạy mỗi 15 phút
+  workflow_dispatch: {}        # Cho phép chạy thủ công
 jobs:
   notify:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: '3.x'
 
       - name: Install dependencies
         run: pip install requests beautifulsoup4
 
-      - name: Run Fisch Season Notifier
+      - name: Run Fisch Notifier
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: python fisch_notify.py
