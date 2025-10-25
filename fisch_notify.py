@@ -4,7 +4,7 @@ import datetime
 import os
 
 URL = "https://fischipedia.org/wiki/Fisch_Wiki"
-WEBHOOK_URL = os.getenv("https://discord.com/api/webhooks/1431501749142814740/Sc4y4biMZEB7wwegVzdm3ZH6gO0mm_fPFspU5_YPvlKS8O1wt-fAdK92mjpOpydns3bA")
+WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
 def get_season_info():
     r = requests.get(URL, timeout=10)
