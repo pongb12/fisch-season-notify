@@ -1,8 +1,8 @@
 name: Fisch Notifier
 on:
   schedule:
-    - cron: '*/15 * * * *'    # Chạy mỗi 15 phút
-  workflow_dispatch: {}        # Cho phép chạy thủ công
+    - cron: '*/15 * * * *'   
+  workflow_dispatch: {}        
 jobs:
   notify:
     runs-on: ubuntu-latest
