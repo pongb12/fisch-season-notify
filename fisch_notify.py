@@ -13,16 +13,23 @@ def get_season_info():
     result = []
 
     for s in season_divs:
-        name = [c.replace("season-", "") for c in s["class"] if c.startswith("season-") and c != "season-cell"]
+        # Tên mùa (spring / summer / autumn / winter)
+        name = [c.replace("season-", "") for c in s["class"]
+                if c.startswith("season-") and c not in ("season-cell", "current-season")]
         is_current = "current-season" in s["class"]
-        time_tag = s.select_one(".season-cd-content")
-        time_text = time_tag.text.strip() if time_tag else "?"
-        time_title = time_tag["title"] if time_tag else "?"
+
+        cd_div = s.select_one(".season-cd")
+        cd_text = cd_div.text.strip() if cd_div else "?"
+        cd_content = s.select_one(".season-cd-content")
+        time_text = cd_content.text.strip() if cd_content else "?"
+        time_title = cd_content["title"] if cd_content and "title" in cd_content.attrs else "?"
+
         result.append({
             "name": name[0] if name else "?",
             "current": is_current,
-            "countdown": time_text,
-            "title": time_title
+            "cd_text": cd_text,
+            "time_text": time_text,
+            "time_title": time_title
         })
     return result
 
@@ -30,18 +37,32 @@ def send_to_discord(message):
     if not WEBHOOK_URL:
         print("⚠️ Missing DISCORD_WEBHOOK")
         return
-    requests.post(WEBHOOK_URL, json={"content": message})
+    try:
+        res = requests.post(WEBHOOK_URL, json={"content": message})
+        res.raise_for_status()
+        print("✅ Sent to Discord!")
+    except Exception as e:
+        print(f"❌ Error sending to Discord: {e}")
 
 def main():
     seasons = get_season_info()
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    msg = f"🕒 Cập nhật mùa Fisch Game ({now})\n"
+    msg = f"🕒 **Cập nhật mùa Fisch Game** ({now})\n"
+    msg += "---------------------------------\n"
+
     for s in seasons:
-        icon = "☀️" if s["name"]=="summer" else "🍂" if s["name"]=="autumn" else "❄️" if s["name"]=="winter" else "🌱"
-        status = "🔸Hiện tại" if s["current"] else "sắp tới"
-        msg += f"{icon} **{s['name'].capitalize()}** - {status}\n⏳ {s['countdown']} ({s['title']})\n"
+        icon = {
+            "summer": "☀️",
+            "autumn": "🍂",
+            "winter": "❄️",
+            "spring": "🌱"
+        }.get(s["name"], "❔")
+
+        status = "🔸 **Hiện tại**" if s["current"] else "Sắp tới"
+        msg += f"{icon} **{s['name'].capitalize()}** - {status}\n"
+        msg += f"⏳ {s['cd_text']} `{s['time_text']}` ({s['time_title']})\n\n"
+
     send_to_discord(msg)
-    print("✅ Sent!")
 
 if __name__ == "__main__":
     main()
