@@ -44,7 +44,7 @@ def send_to_discord(data):
     upcoming = next((s for s in data if not s["current"]), None)
 
     embed = {
-        "title": "🌦️ Fischipedia Seasons Update",
+        "title": "🌦️Seasons Update",
         "color": 0x00FFAA,
         "fields": []
     }
