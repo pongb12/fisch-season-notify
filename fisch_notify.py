@@ -1,68 +1,97 @@
+import os
 import requests
 from bs4 import BeautifulSoup
-import datetime
-import os
+from datetime import datetime, timezone, timedelta
 
 URL = "https://fischipedia.org/wiki/Fisch_Wiki"
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
-def get_season_info():
-    r = requests.get(URL, timeout=10)
-    soup = BeautifulSoup(r.text, "html.parser")
-    season_divs = soup.select(".season-cell")
-    result = []
-
-    for s in season_divs:
-        # Tên mùa (spring / summer / autumn / winter)
-        name = [c.replace("season-", "") for c in s["class"]
-                if c.startswith("season-") and c not in ("season-cell", "current-season")]
-        is_current = "current-season" in s["class"]
-
-        cd_div = s.select_one(".season-cd")
-        cd_text = cd_div.text.strip() if cd_div else "?"
-        cd_content = s.select_one(".season-cd-content")
-        time_text = cd_content.text.strip() if cd_content else "?"
-        time_title = cd_content["title"] if cd_content and "title" in cd_content.attrs else "?"
-
-        result.append({
-            "name": name[0] if name else "?",
-            "current": is_current,
-            "cd_text": cd_text,
-            "time_text": time_text,
-            "time_title": time_title
-        })
-    return result
-
-def send_to_discord(message):
-    if not WEBHOOK_URL:
-        print("⚠️ Missing DISCORD_WEBHOOK")
-        return
+def get_seasons():
+    """Lấy thông tin 4 mùa từ trang Fischipedia"""
+    print("🔍 Fetching data from website...")
     try:
-        res = requests.post(WEBHOOK_URL, json={"content": message})
-        res.raise_for_status()
-        print("✅ Sent to Discord!")
+        response = requests.get(URL, timeout=10)
+        response.raise_for_status()
     except Exception as e:
-        print(f"❌ Error sending to Discord: {e}")
+        print(f"❌ Error fetching site: {e}")
+        return []
 
-def main():
-    seasons = get_season_info()
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    msg = f"🕒 **Fisch Seasons** ({now})\n"
-    msg += "---------------------------------\n"
+    soup = BeautifulSoup(response.text, "html.parser")
+    season_divs = soup.select("div.countdown.countdown-seasons > div.season-cell")
+    if not season_divs:
+        print("⚠️ No season data found — check selector or site structure.")
+        return []
+
+    seasons = []
+    for div in season_divs:
+        classes = div.get("class", [])
+        # Xác định tên mùa
+        season_name = next(
+            (cls.replace("season-", "") for cls in classes if cls.startswith("season-") and cls != "season-cell"),
+            "unknown"
+        ).capitalize()
+        current = "current-season" in classes
+
+        cd_elem = div.select_one(".season-cd-content")
+        countdown = cd_elem.text.strip() if cd_elem else "N/A"
+        title = cd_elem.get("title", "N/A") if cd_elem else "N/A"
+
+        seasons.append({
+            "name": season_name,
+            "current": current,
+            "countdown": countdown,
+            "title": title
+        })
+    return seasons
+
+
+def build_message(seasons):
+    """Tạo nội dung gửi lên Discord"""
+    if not seasons:
+        return "⚠️ No season data available."
+
+    now = datetime.now(timezone(timedelta(hours=7)))  # GMT+7 cho giờ Việt Nam
+    msg = f"🕒 Fisch Seasons ({now.strftime('%Y-%m-%d %H:%M:%S')})\n"
+
+    emoji_map = {
+        "Summer": "☀️",
+        "Autumn": "🍂",
+        "Winter": "❄️",
+        "Spring": "🌸",
+        "Unknown": "❔"
+    }
 
     for s in seasons:
-        icon = {
-            "summer": "☀️",
-            "autumn": "🍂",
-            "winter": "❄️",
-            "spring": "🌱"
-        }.get(s["name"], "❔")
+        emoji = emoji_map.get(s["name"], "❔")
+        line = f"{emoji} "
+        if s["current"]:
+            line += f"**Current:** {s['name']} (Ends in {s['countdown']})"
+        else:
+            line += f"{s['name']} (Starts in {s['countdown']})"
+        msg += line + "\n"
 
-        status = "🔸 **Hiện tại**" if s["current"] else "Sắp tới"
-        msg += f"{icon} **{s['name'].capitalize()}** - {status}\n"
-        msg += f"⏳ {s['cd_text']} `{s['time_text']}` ({s['time_title']})\n\n"
+    return msg.strip()
 
-    send_to_discord(msg)
+
+def send_to_discord(message):
+    """Gửi tin nhắn đến Discord Webhook"""
+    if not WEBHOOK_URL:
+        print("⚠️ Missing DISCORD_WEBHOOK environment variable")
+        return
+
+    payload = {"content": message}
+    try:
+        res = requests.post(WEBHOOK_URL, json=payload)
+        if res.status_code == 204:
+            print("✅ Message sent to Discord successfully!")
+        else:
+            print(f"❌ Discord error {res.status_code}: {res.text}")
+    except Exception as e:
+        print(f"❌ Failed to send message: {e}")
+
 
 if __name__ == "__main__":
-    main()
+    seasons = get_seasons()
+    message = build_message(seasons)
+    print("\n📦 Message Preview:\n" + message)
+    send_to_discord(message)
