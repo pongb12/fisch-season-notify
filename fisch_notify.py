@@ -1,97 +1,77 @@
+
 import os
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timezone, timedelta
+import re
+import datetime
 
-URL = "https://fischipedia.org/wiki/Fisch_Wiki"
-WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
-
-def get_seasons():
-    """Lấy thông tin 4 mùa từ trang Fischipedia"""
-    print("🔍 Fetching data from website...")
-    try:
-        response = requests.get(URL, timeout=10)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"❌ Error fetching site: {e}")
-        return []
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    season_divs = soup.select("div.countdown.countdown-seasons > div.season-cell")
-    if not season_divs:
-        print("⚠️ No season data found — check selector or site structure.")
-        return []
-
-    seasons = []
-    for div in season_divs:
-        classes = div.get("class", [])
-        # Xác định tên mùa
-        season_name = next(
-            (cls.replace("season-", "") for cls in classes if cls.startswith("season-") and cls != "season-cell"),
-            "unknown"
-        ).capitalize()
-        current = "current-season" in classes
-
-        cd_elem = div.select_one(".season-cd-content")
-        countdown = cd_elem.text.strip() if cd_elem else "N/A"
-        title = cd_elem.get("title", "N/A") if cd_elem else "N/A"
-
-        seasons.append({
-            "name": season_name,
-            "current": current,
-            "countdown": countdown,
-            "title": title
-        })
-    return seasons
-
-
-def build_message(seasons):
-    """Tạo nội dung gửi lên Discord"""
-    if not seasons:
-        return "⚠️ No season data available."
-
-    now = datetime.now(timezone(timedelta(hours=7)))  # GMT+7 cho giờ Việt Nam
-    msg = f"🕒 Fisch Seasons ({now.strftime('%Y-%m-%d %H:%M:%S')})\n"
-
-    emoji_map = {
-        "Summer": "☀️",
-        "Autumn": "🍂",
-        "Winter": "❄️",
-        "Spring": "🌸",
-        "Unknown": "❔"
-    }
-
-    for s in seasons:
-        emoji = emoji_map.get(s["name"], "❔")
-        line = f"{emoji} "
-        if s["current"]:
-            line += f"**Current:** {s['name']} (Ends in {s['countdown']})"
-        else:
-            line += f"{s['name']} (Starts in {s['countdown']})"
-        msg += line + "\n"
-
-    return msg.strip()
-
-
-def send_to_discord(message):
-    """Gửi tin nhắn đến Discord Webhook"""
-    if not WEBHOOK_URL:
-        print("⚠️ Missing DISCORD_WEBHOOK environment variable")
+def main():
+ 
+    webhook_url = os.getenv('DISCORD_WEBHOOK')
+    if not webhook_url:
+        print("Error: DISCORD_WEBHOOK environment variable not set.")
         return
 
-    payload = {"content": message}
-    try:
-        res = requests.post(WEBHOOK_URL, json=payload)
-        if res.status_code == 204:
-            print("✅ Message sent to Discord successfully!")
-        else:
-            print(f"❌ Discord error {res.status_code}: {res.text}")
-    except Exception as e:
-        print(f"❌ Failed to send message: {e}")
 
+    url = 'https://fischipedia.org/wiki/Fisch_Wiki'
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Error fetching Fisch Wiki: {e}")
+        return
+
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+    seasons = {}
+    for img in soup.find_all('img', alt=lambda x: x and 'season' in x):
+        parent = img.parent
+        if not parent:
+            continue
+        text = parent.get_text(separator=' ', strip=True)
+
+        match_current = re.match(r'(\w+)\(Current\)\.\s*Next Occurrence:\s*(.*)', text)
+        if match_current:
+            season_name = match_current.group(1)
+            next_occ = match_current.group(2)
+            seasons[season_name] = {'current': True, 'next': next_occ}
+        else:
+            match = re.match(r'(\w+)\.\s*Next Occurrence:\s*(.*)', text)
+            if match:
+                season_name = match.group(1)
+                next_occ = match.group(2)
+                seasons[season_name] = {'current': False, 'next': next_occ}
+
+    if not seasons:
+        print("No season data found on Fisch Wiki.")
+        return
+
+
+    fields = []
+    order = ["Spring", "Summer", "Autumn", "Winter"]
+    for season in order:
+        if season in seasons:
+            info = seasons[season]
+            name = f"{season} (Current Season)" if info['current'] else season
+            value = f"Next Occurrence: {info['next']}"
+            fields.append({"name": name, "value": value, "inline": False})
+
+    embed = {
+        "title": "Season Update",
+        "color": 3447003,
+        "fields": fields,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "footer": {"text": "Data from Fisch Wiki"}
+    }
+    payload = {"embeds": [embed]}
+
+
+    try:
+        res = requests.post(webhook_url, json=payload)
+        res.raise_for_status()
+    except Exception as e:
+        print(f"Error sending webhook: {e}")
 
 if __name__ == "__main__":
-    seasons = get_seasons()
-    message = build_message(seasons)
-    print("\n📦 Message Preview:\n" + message)
-    send_to_discord(message)
+    main()
