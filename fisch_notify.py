@@ -13,7 +13,7 @@ def main():
         return
 
 
-    url = 'https://fischipedia.org/wiki/Fisch_Wiki'
+    url = 'https://fischipedia.org/'
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         response = requests.get(url, headers=headers)
