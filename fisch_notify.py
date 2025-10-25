@@ -1,75 +1,68 @@
-import os
 import requests
 from bs4 import BeautifulSoup
+import datetime
+import os
 
 URL = "https://fischipedia.org/wiki/Fisch_Wiki"
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
-def get_seasons():
-    """Trích xuất thông tin mùa từ trang fischipedia.org"""
-    response = requests.get(URL, timeout=10)
-    soup = BeautifulSoup(response.text, "html.parser")
-
+def get_season_info():
+    r = requests.get(URL, timeout=10)
+    soup = BeautifulSoup(r.text, "html.parser")
+    season_divs = soup.select(".season-cell")
     result = []
-    season_divs = soup.select("div.countdown.countdown-seasons > div.season-cell")
 
-    for div in season_divs:
-        name_class = div.get("class", [])
-        season_name = next((c.replace("season-", "") for c in name_class if c.startswith("season-") and c != "season-cell"), "unknown")
-        current = "current-season" in name_class
+    for s in season_divs:
+        # Tên mùa (spring / summer / autumn / winter)
+        name = [c.replace("season-", "") for c in s["class"]
+                if c.startswith("season-") and c not in ("season-cell", "current-season")]
+        is_current = "current-season" in s["class"]
 
-        time_span = div.select_one(".season-cd-content")
-        if time_span:
-            title = time_span.get("title", "")
-            countdown = time_span.text.strip()
-        else:
-            title, countdown = "N/A", "N/A"
+        cd_div = s.select_one(".season-cd")
+        cd_text = cd_div.text.strip() if cd_div else "?"
+        cd_content = s.select_one(".season-cd-content")
+        time_text = cd_content.text.strip() if cd_content else "?"
+        time_title = cd_content["title"] if cd_content and "title" in cd_content.attrs else "?"
 
         result.append({
-            "name": season_name.capitalize(),
-            "current": current,
-            "title": title,
-            "countdown": countdown
+            "name": name[0] if name else "?",
+            "current": is_current,
+            "cd_text": cd_text,
+            "time_text": time_text,
+            "time_title": time_title
         })
     return result
 
-
-def send_to_discord(data):
-    """Gửi thông tin mùa đến Discord webhook"""
+def send_to_discord(message):
     if not WEBHOOK_URL:
-        print("⚠️ Missing DISCORD_WEBHOOK environment variable")
+        print("⚠️ Missing DISCORD_WEBHOOK")
         return
+    try:
+        res = requests.post(WEBHOOK_URL, json={"content": message})
+        res.raise_for_status()
+        print("✅ Sent to Discord!")
+    except Exception as e:
+        print(f"❌ Error sending to Discord: {e}")
 
-    current = next((s for s in data if s["current"]), None)
-    upcoming = next((s for s in data if not s["current"]), None)
+def main():
+    seasons = get_season_info()
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    msg = f"🕒 **Fisch Seasons** ({now})\n"
+    msg += "---------------------------------\n"
 
-    embed = {
-        "title": "🌦️Seasons Update",
-        "color": 0x00FFAA,
-        "fields": []
-    }
+    for s in seasons:
+        icon = {
+            "summer": "☀️",
+            "autumn": "🍂",
+            "winter": "❄️",
+            "spring": "🌱"
+        }.get(s["name"], "❔")
 
-    for s in data:
-        icon = "☀️" if s["name"] == "Summer" else "🍂" if s["name"] == "Autumn" else "❄️" if s["name"] == "Winter" else "🌱"
-        embed["fields"].append({
-            "name": f"{icon} {s['name']}" + (" (Current)" if s["current"] else ""),
-            "value": f"**Time:** {s['title']}\n**Countdown:** {s['countdown']}",
-            "inline": False
-        })
+        status = "🔸 **Hiện tại**" if s["current"] else "Sắp tới"
+        msg += f"{icon} **{s['name'].capitalize()}** - {status}\n"
+        msg += f"⏳ {s['cd_text']} `{s['time_text']}` ({s['time_title']})\n\n"
 
-    payload = {"embeds": [embed]}
-    response = requests.post(WEBHOOK_URL, json=payload)
-    if response.status_code == 204:
-        print("✅ Sent to Discord successfully!")
-    else:
-        print(f"❌ Failed to send ({response.status_code}): {response.text}")
-
+    send_to_discord(msg)
 
 if __name__ == "__main__":
-    print("🔍 Fetching season data...")
-    seasons = get_seasons()
-    for s in seasons:
-        print(f"- {s['name']}: {s['countdown']} (current={s['current']})")
-
-    print("📤 Sending to Discord...")
-    send_to_discord(seasons)
+    main()
