@@ -2,20 +2,21 @@ name: Fisch Season Notifier
 
 on:
   schedule:
-    - cron: "*/15 * * * *"  # mỗi 15 phút
+    - cron: "*/15 * * * *"  # Mỗi 15 phút
   workflow_dispatch:
 
 jobs:
-  run:
+  notify:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: pip install requests beautifulsoup4
